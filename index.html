@@ -2,7 +2,9 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-fullscreen">
   <title>Alien Survivor</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -28,15 +30,21 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
   };
 }
 
-// === INPUT MANAGER (Safari-compatible) ===
+// === INPUT MANAGER (Safari + iOS touch) ===
 class InputManager {
   constructor() {
     this.keys = new Set();
     this.mouseX = 0; this.mouseY = 0;
     this.mouseDown = false; this.mouseJustDown = false;
 
+    // Touch state (only used on touch devices)
+    this.isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    this.leftTouch  = null; // { id, startX, startY, x, y }
+    this.rightTouch = null;
+    this.shieldTouchActive = false;
+    this.touchMaxR = 68;
+
     const GAME_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD','KeyQ','w','a','s','d','q',' ']);
-    // Use document (not window) for Safari keyboard compatibility
     document.addEventListener('keydown', e => {
       this.keys.add(e.code); this.keys.add(e.key);
       if (GAME_KEYS.has(e.code) || GAME_KEYS.has(e.key)) e.preventDefault();
@@ -44,20 +52,86 @@ class InputManager {
     document.addEventListener('keyup', e => { this.keys.delete(e.code); this.keys.delete(e.key); });
     document.addEventListener('mousemove', e => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
     document.addEventListener('mousedown', e => { if(e.button===0){this.mouseDown=true;this.mouseJustDown=true;} });
-    document.addEventListener('mouseup', e => { if(e.button===0) this.mouseDown=false; });
+    document.addEventListener('mouseup',   e => { if(e.button===0) this.mouseDown=false; });
+
+    if (this.isTouch) {
+      const opt = { passive: false };
+      document.addEventListener('touchstart',  e => this._touchStart(e),  opt);
+      document.addEventListener('touchmove',   e => this._touchMove(e),   opt);
+      document.addEventListener('touchend',    e => this._touchEnd(e),    opt);
+      document.addEventListener('touchcancel', e => this._touchEnd(e),    opt);
+    }
   }
-  consumeJustDown(){ const v=this.mouseJustDown; this.mouseJustDown=false; return v; }
-  getMovement(){
-    let x=0,y=0;
-    if(this.keys.has('KeyA')||this.keys.has('ArrowLeft')||this.keys.has('a')) x-=1;
-    if(this.keys.has('KeyD')||this.keys.has('ArrowRight')||this.keys.has('d')) x+=1;
-    if(this.keys.has('KeyW')||this.keys.has('ArrowUp')||this.keys.has('w')) y-=1;
-    if(this.keys.has('KeyS')||this.keys.has('ArrowDown')||this.keys.has('s')) y+=1;
-    const len=Math.sqrt(x*x+y*y);
-    return len>0?{x:x/len,y:y/len}:{x:0,y:0};
+
+  get _sbx() { return window.innerWidth  - 90; }
+  get _sby() { return window.innerHeight - 90; }
+
+  _touchStart(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      // Shield button (bottom-right corner, 58px radius)
+      const sdx = t.clientX - this._sbx, sdy = t.clientY - this._sby;
+      if (sdx*sdx + sdy*sdy < 58*58) { this.shieldTouchActive = true; continue; }
+      // Left half → movement joystick
+      if (t.clientX < window.innerWidth * 0.5) {
+        if (!this.leftTouch) this.leftTouch = { id:t.identifier, startX:t.clientX, startY:t.clientY, x:t.clientX, y:t.clientY };
+      } else {
+        // Right half → aim + fire
+        if (!this.rightTouch) {
+          this.rightTouch = { id:t.identifier, x:t.clientX, y:t.clientY };
+          this.mouseX = t.clientX; this.mouseY = t.clientY;
+          this.mouseDown = true; this.mouseJustDown = true;
+        }
+      }
+    }
   }
-  getAimAngle(sx,sy){ return Math.atan2(this.mouseY-sy,this.mouseX-sx); }
-  isShield(){ return this.keys.has('KeyQ')||this.keys.has('q'); }
+
+  _touchMove(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (this.leftTouch  && t.identifier === this.leftTouch.id)  { this.leftTouch.x  = t.clientX; this.leftTouch.y  = t.clientY; }
+      if (this.rightTouch && t.identifier === this.rightTouch.id) { this.rightTouch.x = t.clientX; this.rightTouch.y = t.clientY;
+        this.mouseX = t.clientX; this.mouseY = t.clientY; }
+    }
+  }
+
+  _touchEnd(e) {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (this.leftTouch  && t.identifier === this.leftTouch.id)  this.leftTouch  = null;
+      if (this.rightTouch && t.identifier === this.rightTouch.id) { this.rightTouch = null; this.mouseDown = false; }
+      const sdx = t.clientX - this._sbx, sdy = t.clientY - this._sby;
+      if (sdx*sdx + sdy*sdy < 58*58) this.shieldTouchActive = false;
+    }
+    if (e.touches.length === 0) this.shieldTouchActive = false;
+  }
+
+  consumeJustDown() { const v=this.mouseJustDown; this.mouseJustDown=false; return v; }
+
+  getMovement() {
+    let x=0, y=0;
+    // Keyboard
+    if (this.keys.has('KeyA')||this.keys.has('ArrowLeft')||this.keys.has('a'))  x -= 1;
+    if (this.keys.has('KeyD')||this.keys.has('ArrowRight')||this.keys.has('d')) x += 1;
+    if (this.keys.has('KeyW')||this.keys.has('ArrowUp')||this.keys.has('w'))    y -= 1;
+    if (this.keys.has('KeyS')||this.keys.has('ArrowDown')||this.keys.has('s'))  y += 1;
+    // Touch joystick (overrides keyboard)
+    if (this.leftTouch) {
+      const dx = this.leftTouch.x - this.leftTouch.startX, dy = this.leftTouch.y - this.leftTouch.startY;
+      const len = Math.sqrt(dx*dx + dy*dy);
+      if (len > 10) { x = dx / Math.max(len, this.touchMaxR); y = dy / Math.max(len, this.touchMaxR); }
+      else { x = 0; y = 0; }
+    }
+    const len = Math.sqrt(x*x + y*y);
+    return len > 0 ? { x: x/Math.max(len,1), y: y/Math.max(len,1) } : { x:0, y:0 };
+  }
+
+  getAimAngle(sx, sy) {
+    if (this.rightTouch) return Math.atan2(this.rightTouch.y - sy, this.rightTouch.x - sx);
+    return Math.atan2(this.mouseY - sy, this.mouseX - sx);
+  }
+
+  isShield() { return this.keys.has('KeyQ') || this.keys.has('q') || this.shieldTouchActive; }
 }
 
 // === CAMERA ===
@@ -771,6 +845,76 @@ function drawStartScreen(ctx,cw,ch){
   ctx.fillText('[ CLICK TO START ]',cx,cy+185);ctx.shadowBlur=0;
 }
 
+// === TOUCH UI ===
+function drawTouchUI(ctx, input, cw, ch) {
+  if (!input.isTouch) return;
+  ctx.save();
+
+  // --- Left joystick ---
+  const baseX = input.leftTouch ? input.leftTouch.startX : cw * 0.16;
+  const baseY = input.leftTouch ? input.leftTouch.startY : ch * 0.78;
+
+  // Outer ring
+  ctx.globalAlpha = 0.28;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(baseX, baseY, 68, 0, Math.PI*2); ctx.stroke();
+  // Cross inside ring
+  ctx.strokeStyle = '#ffffff55'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(baseX - 68, baseY); ctx.lineTo(baseX + 68, baseY);
+  ctx.moveTo(baseX, baseY - 68); ctx.lineTo(baseX, baseY + 68);
+  ctx.stroke();
+
+  // Thumb knob
+  if (input.leftTouch) {
+    const dx = input.leftTouch.x - input.leftTouch.startX;
+    const dy = input.leftTouch.y - input.leftTouch.startY;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const clamp = Math.min(len, input.touchMaxR);
+    const tx = input.leftTouch.startX + (len > 0 ? dx/len*clamp : 0);
+    const ty = input.leftTouch.startY + (len > 0 ? dy/len*clamp : 0);
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#ffffff22'; ctx.strokeStyle = '#ffffffcc'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(tx, ty, 30, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+
+  // --- Right aim / fire indicator ---
+  if (input.rightTouch) {
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = '#ff9900'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(input.rightTouch.x, input.rightTouch.y, 36, 0, Math.PI*2); ctx.stroke();
+    ctx.strokeStyle = '#ff990088'; ctx.lineWidth = 1;
+    const r = input.rightTouch;
+    ctx.beginPath();
+    ctx.moveTo(r.x - 22, r.y); ctx.lineTo(r.x + 22, r.y);
+    ctx.moveTo(r.x, r.y - 22); ctx.lineTo(r.x, r.y + 22);
+    ctx.stroke();
+  } else {
+    // Fire hint on right side when idle
+    ctx.globalAlpha = 0.14;
+    ctx.strokeStyle = '#ff9900'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cw * 0.78, ch * 0.78, 55, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = '#ff9900'; ctx.font = '11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('AIM + FIRE', cw * 0.78, ch * 0.78);
+  }
+
+  // --- Shield button (bottom-right) ---
+  const sbx = input._sbx, sby = input._sby;
+  const shActive = input.shieldTouchActive;
+  ctx.globalAlpha = shActive ? 0.85 : 0.38;
+  ctx.shadowBlur = shActive ? 18 : 0; ctx.shadowColor = '#00eeff';
+  ctx.fillStyle = shActive ? '#00eeff33' : '#00eeff11';
+  ctx.strokeStyle = '#00eeff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(sbx, sby, 44, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = shActive ? '#00eeff' : '#00eeffaa';
+  ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('SHIELD', sbx, sby);
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
 // === GAME ===
 class Game {
   constructor(){
@@ -791,8 +935,16 @@ class Game {
 
     this.reset();
 
-    this.canvas.addEventListener('click',()=>{if(this.state==='START')this.state='PLAYING';});
-    window.addEventListener('keydown',e=>{if(e.code==='KeyR'&&(this.state==='DEAD'||this.state==='WIN')){this.reset();this.state='PLAYING';}});
+    const startGame = () => { if(this.state==='START') this.state='PLAYING'; };
+    this.canvas.addEventListener('click', startGame);
+    this.canvas.addEventListener('touchend', e => { e.preventDefault(); startGame(); }, { passive:false });
+    window.addEventListener('keydown', e => {
+      if(e.code==='KeyR'&&(this.state==='DEAD'||this.state==='WIN')){this.reset();this.state='PLAYING';}
+    });
+    // Restart on tap in game-over screen
+    document.addEventListener('touchend', e => {
+      if(this.state==='DEAD'||this.state==='WIN'){e.preventDefault();this.reset();this.state='PLAYING';}
+    }, { passive:false });
 
     this.lastTime=performance.now();
     requestAnimationFrame(ts=>this.loop(ts));
@@ -988,6 +1140,7 @@ class Game {
     if(this.player.weapon instanceof Bomb)this.player.weapon.drawProjectiles(ctx,cam);
     for(const p of this.particles){if(cam.isVisible(p.x,p.y,20))p.draw(ctx,cam);}
     drawHUD(ctx,this.player,this.gameTime,cw,ch);
+    drawTouchUI(ctx,this.input,cw,ch);
   }
 }
 
