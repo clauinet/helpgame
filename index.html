@@ -6,8 +6,9 @@
   <title>Alien Survivor</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; cursor: crosshair; }
-    canvas { display: block; outline: none; }
+    body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; cursor: crosshair;
+           -webkit-user-select: none; user-select: none; touch-action: none; }
+    canvas { display: block; outline: none; -webkit-tap-highlight-color: transparent; }
   </style>
 </head>
 <body>
@@ -35,14 +36,15 @@ class InputManager {
     this.mouseDown = false; this.mouseJustDown = false;
 
     const GAME_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD','KeyQ','w','a','s','d','q',' ']);
-    window.addEventListener('keydown', e => {
+    // Use document (not window) for Safari keyboard compatibility
+    document.addEventListener('keydown', e => {
       this.keys.add(e.code); this.keys.add(e.key);
       if (GAME_KEYS.has(e.code) || GAME_KEYS.has(e.key)) e.preventDefault();
     });
-    window.addEventListener('keyup', e => { this.keys.delete(e.code); this.keys.delete(e.key); });
-    window.addEventListener('mousemove', e => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
-    window.addEventListener('mousedown', e => { if(e.button===0){this.mouseDown=true;this.mouseJustDown=true;} });
-    window.addEventListener('mouseup', e => { if(e.button===0) this.mouseDown=false; });
+    document.addEventListener('keyup', e => { this.keys.delete(e.code); this.keys.delete(e.key); });
+    document.addEventListener('mousemove', e => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
+    document.addEventListener('mousedown', e => { if(e.button===0){this.mouseDown=true;this.mouseJustDown=true;} });
+    document.addEventListener('mouseup', e => { if(e.button===0) this.mouseDown=false; });
   }
   consumeJustDown(){ const v=this.mouseJustDown; this.mouseJustDown=false; return v; }
   getMovement(){
