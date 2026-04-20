@@ -257,7 +257,7 @@ function randomToolPosition(existing,px,py,minDist=250){
 function buildTerrainZones(count){
   const zones=[];
   for(let i=0;i<count;i++){
-    const hue=[260,200,30,310,180][i%5];
+    const hue=[15,25,35,200,45][i%5];
     zones.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:250+Math.random()*500,hue});
   }
   return zones;
@@ -331,9 +331,10 @@ function buildLavaLakes(count,caves){
 
 function buildStars(count){
   const s=[];
+  const rockColors=['#2a1208','#3a1a0a','#1e1008','#281810','#201510','#321a0c','#181210','#2e1a10','#1a1614','#241a12'];
   for(let i=0;i<count;i++){
-    const hue=[0,200,280,60][Math.floor(Math.random()*4)];
-    s.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:Math.random()*1.6+0.3,brightness:Math.random(),color:Math.random()<0.6?'#ffffff':`hsl(${hue},60%,80%)`});
+    const col=rockColors[Math.floor(Math.random()*rockColors.length)];
+    s.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:Math.random()*3.2+0.9,brightness:Math.random(),color:col,rx:0.5+Math.random()*1.1,ry:0.5+Math.random()*1.1,rot:Math.random()*Math.PI});
   }
   return s;
 }
@@ -1042,23 +1043,27 @@ class Game {
     const cam=this.camera,time=this.worldTime;
 
     // Base ground
-    ctx.fillStyle='#0c0818';ctx.fillRect(0,0,cw,ch);
+    ctx.fillStyle='#160b05';ctx.fillRect(0,0,cw,ch);
 
-    // Stars (parallax)
-    for(const s of this.stars){
-      const sx=cam?((s.x-cam.x*.18+WORLD_W*2)%cw):s.x%cw;
-      const sy=cam?((s.y-cam.y*.18+WORLD_H*2)%ch):s.y%ch;
-      ctx.globalAlpha=.25+s.brightness*.55;ctx.fillStyle=s.color;
-      ctx.beginPath();ctx.arc(sx,sy,s.r,0,Math.PI*2);ctx.fill();
-    }
-    ctx.globalAlpha=1;if(!cam)return;
+    // Ground pebbles / surface rock debris
+    if(cam){
+      for(const s of this.stars){
+        if(!cam.isVisible(s.x,s.y,6))continue;
+        const sp=cam.worldToScreen(s.x,s.y);
+        ctx.globalAlpha=0.35+s.brightness*0.5;ctx.fillStyle=s.color;
+        ctx.save();ctx.translate(sp.x,sp.y);ctx.rotate(s.rot);
+        ctx.beginPath();ctx.ellipse(0,0,s.r*s.rx,s.r*s.ry,0,0,Math.PI*2);ctx.fill();
+        ctx.restore();
+      }
+      ctx.globalAlpha=1;
+    } else { ctx.globalAlpha=1;return; }
 
     // Terrain zones (large soft ground color blobs)
     for(const z of this.terrainZones){
       if(!cam.isVisible(z.x,z.y,z.r+100))continue;
       const s=cam.worldToScreen(z.x,z.y);
       const grad=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,z.r);
-      grad.addColorStop(0,`hsla(${z.hue},35%,14%,0.45)`);grad.addColorStop(1,'rgba(0,0,0,0)');
+      grad.addColorStop(0,`hsla(${z.hue},45%,13%,0.55)`);grad.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle=grad;ctx.beginPath();ctx.arc(s.x,s.y,z.r,0,Math.PI*2);ctx.fill();
     }
 
@@ -1069,8 +1074,8 @@ class Game {
     for(const c of this.craters){
       if(!cam.isVisible(c.x,c.y,c.rimR+20))continue;
       const s=cam.worldToScreen(c.x,c.y);
-      ctx.strokeStyle='#2a1a30';ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR,0,Math.PI*2);ctx.stroke();
-      ctx.strokeStyle='#3a2a45';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR-2,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle='#2e1005';ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle='#3e1a08';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR-2,0,Math.PI*2);ctx.stroke();
       const grad=ctx.createRadialGradient(s.x+c.r*.25,s.y+c.r*.2,0,s.x,s.y,c.r);
       grad.addColorStop(0,'#000000bb');grad.addColorStop(0.6,'#0a0612aa');grad.addColorStop(1,'#0c081800');
       ctx.fillStyle=grad;ctx.beginPath();ctx.arc(s.x,s.y,c.r,0,Math.PI*2);ctx.fill();
@@ -1111,7 +1116,7 @@ class Game {
     }
 
     // Grid dots
-    ctx.fillStyle='#1a0f2a';const gridSize=100;
+    ctx.fillStyle='#1e0e06';const gridSize=100;
     const startX=Math.floor((cam.x-cw/2)/gridSize)*gridSize,startY=Math.floor((cam.y-ch/2)/gridSize)*gridSize;
     for(let gx=startX;gx<cam.x+cw/2+gridSize;gx+=gridSize)
       for(let gy=startY;gy<cam.y+ch/2+gridSize;gy+=gridSize){
@@ -1120,12 +1125,12 @@ class Game {
 
     // Vignette
     const vign=ctx.createRadialGradient(cw/2,ch/2,Math.min(cw,ch)*.2,cw/2,ch/2,Math.max(cw,ch)*.8);
-    vign.addColorStop(0,'rgba(0,0,0,0)');vign.addColorStop(1,'rgba(5,0,15,0.65)');
+    vign.addColorStop(0,'rgba(0,0,0,0)');vign.addColorStop(1,'rgba(10,4,0,0.65)');
     ctx.fillStyle=vign;ctx.fillRect(0,0,cw,ch);
 
-    // Purple atmosphere haze
-    const topHaze=ctx.createLinearGradient(0,0,0,ch*.25);
-    topHaze.addColorStop(0,'rgba(60,0,80,0.12)');topHaze.addColorStop(1,'rgba(60,0,80,0)');
+    // Toxic sulfurous atmosphere haze
+    const topHaze=ctx.createLinearGradient(0,0,0,ch*.3);
+    topHaze.addColorStop(0,'rgba(70,50,0,0.18)');topHaze.addColorStop(1,'rgba(70,50,0,0)');
     ctx.fillStyle=topHaze;ctx.fillRect(0,0,cw,ch);
   }
 
