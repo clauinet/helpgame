@@ -20,6 +20,95 @@
 const WORLD_W = 3200, WORLD_H = 3200;
 const MAX_GAME_TIME = 600, MAX_BULLETS = 300, MAX_PARTICLES = 400, MAX_ENEMIES = 35;
 const LAVA_DAMAGE = 22; // hp/sec
+const TOXIC_DAMAGE = 14; // hp/sec
+const ICE_SPEED_MULT = 0.55;
+
+// === PLANET CONFIGS ===
+const PLANETS = [
+  {
+    id:1, name:'XERION', subtitle:'Arid Wasteland',
+    groundColor:'#140a02', vignetteColor:'rgba(10,4,0,0.70)',
+    atmosphereTop:'rgba(80,50,0,0.20)',
+    terrainHues:[25,35,45,18,30],
+    starColors:['#2a1208','#3a1a08','#241510','#301a08','#1e1005'],
+    crystalHues:[30,45,20,50], floraHues:[35,50,25,15],
+    craterRim:'#2e1005', craterRim2:'#3e1a08', gridColor:'#1e0e06',
+    hazardType:'lava', hazardCount:5, caveCount:5,
+    diffMult:1.0, spawnStart:5.0, maxStart:4, maxCap:22,
+    types(t){return'CRAWLER';},
+    labels:{CRAWLER:'SAND CRAWLER',SHOOTER:'ACID SPITTER',BRUTE:'ROCK BRUTE'},
+    threats:['SAND CRAWLERS'],
+    friendly:false,
+  },
+  {
+    id:2, name:'MYTHOS', subtitle:'Toxic Swamplands',
+    groundColor:'#04100a', vignetteColor:'rgba(0,7,3,0.70)',
+    atmosphereTop:'rgba(15,65,10,0.22)',
+    terrainHues:[80,100,120,60,90],
+    starColors:['#081408','#0a1c0a','#091610','#0c1c0c','#071008'],
+    crystalHues:[100,130,80,150], floraHues:[100,120,80,140],
+    craterRim:'#0a1e06', craterRim2:'#0f2808', gridColor:'#0a140a',
+    hazardType:'toxic', hazardCount:8, caveCount:5,
+    diffMult:1.3, spawnStart:4.0, maxStart:5, maxCap:26,
+    types(t){if(t<60)return'CRAWLER';return Math.random()<.55?'CRAWLER':'SHOOTER';},
+    labels:{CRAWLER:'SWAMP CRAWLER',SHOOTER:'ACID SPITTER',BRUTE:'SWAMP BRUTE'},
+    threats:['SWAMP CRAWLERS','ACID SPITTERS'],
+    friendly:false,
+  },
+  {
+    id:3, name:'GLACIUS', subtitle:'Frozen Tundra',
+    groundColor:'#04080f', vignetteColor:'rgba(0,3,10,0.70)',
+    atmosphereTop:'rgba(10,25,65,0.18)',
+    terrainHues:[200,210,220,195,215],
+    starColors:['#0a1020','#101828','#081420','#0c1824','#0a1018'],
+    crystalHues:[190,210,200,220], floraHues:[195,215,205,225],
+    craterRim:'#0a1a30', craterRim2:'#0c2040', gridColor:'#08101e',
+    hazardType:'ice', hazardCount:9, caveCount:4,
+    diffMult:1.6, spawnStart:3.2, maxStart:6, maxCap:30,
+    types(t){
+      if(t<50)return'CRAWLER';
+      if(t<180)return Math.random()<.55?'CRAWLER':'SHOOTER';
+      const r=Math.random();return r<.40?'CRAWLER':r<.70?'SHOOTER':'BRUTE';
+    },
+    labels:{CRAWLER:'ICE CRAWLER',SHOOTER:'CRYO SHOOTER',BRUTE:'FROST BRUTE'},
+    threats:['ICE CRAWLERS','CRYO SHOOTERS','FROST BRUTES'],
+    friendly:false,
+  },
+  {
+    id:4, name:'INFERNO', subtitle:'Volcanic Hell',
+    groundColor:'#130201', vignetteColor:'rgba(10,2,0,0.75)',
+    atmosphereTop:'rgba(100,18,0,0.28)',
+    terrainHues:[5,12,355,8,0],
+    starColors:['#200505','#2a0808','#1e0404','#240606','#180303'],
+    crystalHues:[0,15,350,30], floraHues:[0,15,350,10],
+    craterRim:'#3a0a02', craterRim2:'#4e1005', gridColor:'#1e0804',
+    hazardType:'lava', hazardCount:14, caveCount:3,
+    diffMult:2.0, spawnStart:2.5, maxStart:8, maxCap:35,
+    types(t){
+      if(t<40)return'CRAWLER';
+      if(t<140)return Math.random()<.55?'CRAWLER':'SHOOTER';
+      const r=Math.random();return r<.35?'CRAWLER':r<.65?'SHOOTER':'BRUTE';
+    },
+    labels:{CRAWLER:'FIRE CRAWLER',SHOOTER:'PLASMA SHOOTER',BRUTE:'INFERNO BRUTE'},
+    threats:['FIRE CRAWLERS','PLASMA SHOOTERS','INFERNO BRUTES'],
+    friendly:false,
+  },
+  {
+    id:5, name:'EDEN', subtitle:'Paradise Found',
+    groundColor:'#030e04', vignetteColor:'rgba(0,5,0,0.50)',
+    atmosphereTop:'rgba(8,55,18,0.15)',
+    terrainHues:[110,130,90,150,120],
+    starColors:['#081408','#0c1c0a','#0a1808','#0e200a','#061008'],
+    crystalHues:[120,150,100,160], floraHues:[110,130,90,150],
+    craterRim:'#0e2a08', craterRim2:'#123a0a', gridColor:'#0a1a08',
+    hazardType:'none', hazardCount:0, caveCount:6,
+    diffMult:0, spawnStart:9999, maxStart:0, maxCap:0,
+    types(t){return null;},
+    labels:{},
+    threats:[],
+    friendly:true,
+  },
+];
 
 if (!CanvasRenderingContext2D.prototype.roundRect) {
   CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
@@ -254,10 +343,10 @@ function randomToolPosition(existing,px,py,minDist=250){
 
 // === WORLD FEATURE BUILDERS ===
 
-function buildTerrainZones(count){
+function buildTerrainZones(count,hues){
   const zones=[];
   for(let i=0;i<count;i++){
-    const hue=[15,25,35,200,45][i%5];
+    const hue=hues[i%hues.length];
     zones.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:250+Math.random()*500,hue});
   }
   return zones;
@@ -269,21 +358,21 @@ function buildCraters(count){
   return c;
 }
 
-function buildCrystals(count){
+function buildCrystals(count,hues){
   const c=[];
   for(let i=0;i<count;i++){
     const n=3+Math.floor(Math.random()*4),baseR=10+Math.random()*28,spikes=[];
     for(let j=0;j<n;j++) spikes.push({angle:(j/n)*Math.PI*2+Math.random()*0.4,len:baseR*(0.5+Math.random()*0.9),width:3+Math.random()*5});
-    const hue=[175,260,45,310][Math.floor(Math.random()*4)];
+    const hue=hues[Math.floor(Math.random()*hues.length)];
     c.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,spikes,color:`hsl(${hue},90%,60%)`});
   }
   return c;
 }
 
-function buildAlienFlora(count){
+function buildAlienFlora(count,hues){
   const f=[];
   for(let i=0;i<count;i++){
-    const spikes=5+Math.floor(Math.random()*6),r=7+Math.random()*20,hue=[120,300,200,50][Math.floor(Math.random()*4)];
+    const spikes=5+Math.floor(Math.random()*6),r=7+Math.random()*20,hue=hues[Math.floor(Math.random()*hues.length)];
     f.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r,spikes,color:`hsl(${hue},65%,28%)`,glowColor:`hsl(${hue},90%,52%)`});
   }
   return f;
@@ -329,11 +418,10 @@ function buildLavaLakes(count,caves){
   return lakes;
 }
 
-function buildStars(count){
+function buildStars(count,colors){
   const s=[];
-  const rockColors=['#2a1208','#3a1a0a','#1e1008','#281810','#201510','#321a0c','#181210','#2e1a10','#1a1614','#241a12'];
   for(let i=0;i<count;i++){
-    const col=rockColors[Math.floor(Math.random()*rockColors.length)];
+    const col=colors[Math.floor(Math.random()*colors.length)];
     s.push({x:Math.random()*WORLD_W,y:Math.random()*WORLD_H,r:Math.random()*3.2+0.9,brightness:Math.random(),color:col,rx:0.5+Math.random()*1.1,ry:0.5+Math.random()*1.1,rot:Math.random()*Math.PI});
   }
   return s;
@@ -460,6 +548,58 @@ function drawLavaLake(ctx,lake,cam,time){
   ctx.strokeStyle='#44110044';ctx.lineWidth=3;
   ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx,0,Math.PI*2);ctx.stroke();ctx.restore();
 
+  ctx.restore();
+}
+
+function drawToxicPool(ctx,pool,cam,time){
+  if(!cam.isVisible(pool.x,pool.y,Math.max(pool.rx,pool.ry)+50))return;
+  const s=cam.worldToScreen(pool.x,pool.y);const{rx,ry,angle}=pool;
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(angle);
+  ctx.globalAlpha=0.35;
+  const halo=ctx.createRadialGradient(0,0,rx*.4,0,0,rx*1.5);
+  halo.addColorStop(0,'#00ff4400');halo.addColorStop(0.6,'#44ff0044');halo.addColorStop(1,'#00ff0000');
+  ctx.fillStyle=halo;ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx*1.5,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.globalAlpha=1;
+  const tg=ctx.createRadialGradient(-rx*.2,-ry*.15,0,0,0,rx);
+  tg.addColorStop(0,'#ccff44');tg.addColorStop(0.2,'#88dd00');tg.addColorStop(0.55,'#228800');tg.addColorStop(0.85,'#114400');tg.addColorStop(1,'#052200');
+  ctx.shadowBlur=18;ctx.shadowColor='#44ff00';ctx.fillStyle=tg;
+  ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx,0,Math.PI*2);ctx.fill();ctx.restore();ctx.shadowBlur=0;
+  const nb=Math.floor(rx/14);ctx.shadowBlur=6;ctx.shadowColor='#88ff44';
+  for(let i=0;i<nb;i++){
+    const ba=((i/nb)*Math.PI*2+time*.3+i*1.7)%(Math.PI*2);
+    const br=(0.15+((Math.sin(time*1.2+i*2.3)+1)/2)*0.55)*rx;
+    const bubR=1.5+Math.sin(time*1.8+i);
+    ctx.fillStyle='#aaff44';ctx.beginPath();ctx.arc(Math.cos(ba)*br,Math.sin(ba)*br*(ry/rx),bubR,0,Math.PI*2);ctx.fill();
+  }
+  ctx.shadowBlur=0;ctx.strokeStyle='#22660044';ctx.lineWidth=3;
+  ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx,0,Math.PI*2);ctx.stroke();ctx.restore();
+  ctx.restore();
+}
+
+function drawIcePatch(ctx,patch,cam,time){
+  if(!cam.isVisible(patch.x,patch.y,Math.max(patch.rx,patch.ry)+50))return;
+  const s=cam.worldToScreen(patch.x,patch.y);const{rx,ry,angle}=patch;
+  ctx.save();ctx.translate(s.x,s.y);ctx.rotate(angle);
+  ctx.globalAlpha=0.28;
+  const halo=ctx.createRadialGradient(0,0,rx*.4,0,0,rx*1.4);
+  halo.addColorStop(0,'#aaeeff44');halo.addColorStop(0.7,'#4488ff22');halo.addColorStop(1,'#2266ff00');
+  ctx.fillStyle=halo;ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx*1.4,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.globalAlpha=1;
+  const ig=ctx.createRadialGradient(-rx*.2,-ry*.15,0,0,0,rx);
+  ig.addColorStop(0,'#eef8ff');ig.addColorStop(0.3,'#aaccee');ig.addColorStop(0.65,'#5588bb');ig.addColorStop(0.9,'#2244aa');ig.addColorStop(1,'#112266');
+  ctx.shadowBlur=12;ctx.shadowColor='#88aaff';ctx.fillStyle=ig;
+  ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx,0,Math.PI*2);ctx.fill();ctx.restore();ctx.shadowBlur=0;
+  ctx.strokeStyle='#ffffff55';ctx.lineWidth=1;
+  const nl=4+Math.floor(rx/25);
+  for(let i=0;i<nl;i++){
+    const a=(i/nl)*Math.PI+time*.02,len=(0.4+Math.sin(time*.3+i)*.1)*rx,leny=len*(ry/rx);
+    ctx.beginPath();ctx.moveTo(Math.cos(a)*rx*.1,Math.sin(a)*ry*.1);ctx.lineTo(Math.cos(a)*len,Math.sin(a)*leny);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-Math.cos(a)*rx*.1,-Math.sin(a)*ry*.1);ctx.lineTo(-Math.cos(a)*len,-Math.sin(a)*leny);ctx.stroke();
+  }
+  ctx.globalAlpha=0.18+Math.sin(time*2.5)*.08;ctx.fillStyle='#ffffff';
+  ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(-rx*.2,rx*.15,rx*.22,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.globalAlpha=1;ctx.strokeStyle='#aaccff44';ctx.lineWidth=2;
+  ctx.save();ctx.scale(1,ry/rx);ctx.beginPath();ctx.arc(0,0,rx,0,Math.PI*2);ctx.stroke();ctx.restore();
   ctx.restore();
 }
 
@@ -668,7 +808,7 @@ class Player {
     this.x=x;this.y=y;this.radius=16;this.speed=210;this.maxHp=100;this.hp=100;
     this.dead=false;this.invTimer=0;this.flashTimer=0;this.aimAngle=0;
     this.weapon=new Pistol();this.shieldWeapon=null;this.bullets=[];
-    this.inCave=false;this.inLava=false;this.lavaDamageTimer=0;
+    this.inCave=false;this.inLava=false;this.inIce=false;this.lavaDamageTimer=0;
   }
   takeDamage(amount,particles){
     if(this.invTimer>0)return;if(this.shieldWeapon&&this.shieldWeapon.active)return;
@@ -689,7 +829,8 @@ class Player {
   }
   update(dt,input,cam){
     const move=input.getMovement();
-    this.x+=move.x*this.speed*dt;this.y+=move.y*this.speed*dt;
+    const spd=this.inIce?this.speed*ICE_SPEED_MULT:this.speed;
+    this.x+=move.x*spd*dt;this.y+=move.y*spd*dt;
     this.x=Math.max(this.radius,Math.min(WORLD_W-this.radius,this.x));
     this.y=Math.max(this.radius,Math.min(WORLD_H-this.radius,this.y));
     const sc=cam.worldToScreen(this.x,this.y);this.aimAngle=input.getAimAngle(sc.x,sc.y);
@@ -713,15 +854,11 @@ class Player {
 
 // === SPAWNER ===
 class EnemySpawner {
-  constructor(){this.timer=0;this.toolTimer=0;this.toolInterval=45;}
-  getSpawnInterval(t){return Math.max(0.55,4.0*Math.exp(-t/140));}
-  getMaxEnemies(t){return Math.min(MAX_ENEMIES,Math.floor(5+(t/MAX_GAME_TIME)*30));}
-  getTimeMult(t){return 1+(t/MAX_GAME_TIME)*2.5;}
-  getType(t){
-    if(t<90)return'CRAWLER';if(t<200)return Math.random()<.75?'CRAWLER':'SHOOTER';
-    if(t<320)return Math.random()<.55?'CRAWLER':'SHOOTER';
-    const r=Math.random();return r<.45?'CRAWLER':r<.75?'SHOOTER':'BRUTE';
-  }
+  constructor(planet){this.planet=planet;this.timer=0;this.toolTimer=0;this.toolInterval=45;}
+  getSpawnInterval(t){return Math.max(0.45,this.planet.spawnStart*Math.exp(-t/130));}
+  getMaxEnemies(t){const p=this.planet;return Math.min(p.maxCap,Math.floor(p.maxStart+(t/MAX_GAME_TIME)*(p.maxCap-p.maxStart)));}
+  getTimeMult(t){return this.planet.diffMult*(1+(t/MAX_GAME_TIME)*2.0);}
+  getType(t){return this.planet.types(t);}
   spawnPosition(cam,player){
     const margin=60;
     for(let i=0;i<20;i++){
@@ -737,9 +874,13 @@ class EnemySpawner {
     return{x:Math.random()*WORLD_W,y:Math.random()*WORLD_H};
   }
   update(dt,gameTime,enemies,player,cam){
+    if(this.planet.friendly)return;
     this.timer+=dt;const interval=this.getSpawnInterval(gameTime),maxE=this.getMaxEnemies(gameTime);
-    while(this.timer>=interval&&enemies.length<maxE){this.timer-=interval;
-      const pos=this.spawnPosition(cam,player);enemies.push(new Enemy(pos.x,pos.y,this.getType(gameTime),this.getTimeMult(gameTime)));}
+    while(this.timer>=interval&&enemies.length<maxE){
+      this.timer-=interval;
+      const type=this.getType(gameTime);if(!type)break;
+      const pos=this.spawnPosition(cam,player);enemies.push(new Enemy(pos.x,pos.y,type,this.getTimeMult(gameTime)));
+    }
     if(this.timer>interval*2)this.timer=interval;
   }
   updateTools(dt,gameTime,tools,player){
@@ -756,14 +897,25 @@ class EnemySpawner {
 // === HUD ===
 function formatTime(s){const m=Math.floor(s/60),ss=Math.floor(s%60);return`${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;}
 
-function drawHUD(ctx,player,gameTime,cw,ch){
+function drawHUD(ctx,player,gameTime,cw,ch,planet){
   const remaining=Math.max(0,MAX_GAME_TIME-gameTime);ctx.save();
 
-  // Lava overlay
+  // Lava/toxic overlay
   if(player.inLava){
-    ctx.fillStyle=`rgba(255,40,0,${0.12+Math.sin(gameTime*8)*.06})`;ctx.fillRect(0,0,cw,ch);
-    ctx.font='bold 14px Courier New';ctx.textAlign='center';ctx.shadowBlur=12;ctx.shadowColor='#ff4400';
-    ctx.fillStyle='#ff6600';ctx.fillText('⚠ BURNING! MOVE AWAY ⚠',cw/2,70);ctx.shadowBlur=0;
+    const isToxic=planet&&planet.hazardType==='toxic';
+    ctx.fillStyle=isToxic?`rgba(30,180,0,${0.10+Math.sin(gameTime*8)*.05})`:`rgba(255,40,0,${0.12+Math.sin(gameTime*8)*.06})`;
+    ctx.fillRect(0,0,cw,ch);
+    ctx.font='bold 14px Courier New';ctx.textAlign='center';
+    ctx.shadowBlur=12;ctx.shadowColor=isToxic?'#44ff00':'#ff4400';
+    ctx.fillStyle=isToxic?'#88ff44':'#ff6600';
+    ctx.fillText(isToxic?'☣ TOXIC! MOVE AWAY ☣':'⚠ BURNING! MOVE AWAY ⚠',cw/2,70);ctx.shadowBlur=0;
+  }
+
+  // Ice overlay
+  if(player.inIce){
+    ctx.fillStyle=`rgba(80,130,255,${0.07+Math.sin(gameTime*5)*.03})`;ctx.fillRect(0,0,cw,ch);
+    ctx.font='bold 14px Courier New';ctx.textAlign='center';ctx.shadowBlur=10;ctx.shadowColor='#88aaff';
+    ctx.fillStyle='#aaccff';ctx.fillText('❄ ICE — MOVEMENT SLOWED ❄',cw/2,70);ctx.shadowBlur=0;
   }
 
   // Cave overlay
@@ -771,6 +923,12 @@ function drawHUD(ctx,player,gameTime,cw,ch){
     ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(0,0,cw,ch);
     ctx.font='bold 13px Courier New';ctx.textAlign='center';ctx.shadowBlur=10;ctx.shadowColor='#00ff88';
     ctx.fillStyle='#00ff88';ctx.fillText('[ HIDDEN — CRAWLERS CANNOT SEE YOU ]',cw/2,70);ctx.shadowBlur=0;
+  }
+
+  // Eden friendly overlay
+  if(planet&&planet.friendly){
+    ctx.font='bold 13px Courier New';ctx.textAlign='center';ctx.shadowBlur=10;ctx.shadowColor='#44ff88';
+    ctx.fillStyle='#44ff88';ctx.fillText('✦ FRIENDLY PLANET — LANDER INBOUND ✦',cw/2,70);ctx.shadowBlur=0;
   }
 
   // HP bar
@@ -785,7 +943,9 @@ function drawHUD(ctx,player,gameTime,cw,ch){
   ctx.font='bold 26px Courier New';ctx.textAlign='center';ctx.fillStyle=critical?'#ff4444':'#ffffff';
   if(critical&&Math.floor(gameTime*2)%2===0){ctx.shadowBlur=14;ctx.shadowColor='#ff4444';}
   ctx.fillText(formatTime(remaining),cw/2,36);ctx.shadowBlur=0;
-  ctx.font='10px Courier New';ctx.fillStyle='#aaaaaa';ctx.fillText('TIME LEFT',cw/2,52);
+  ctx.font='10px Courier New';ctx.fillStyle='#888888';
+  const pname=planet?`PLANET ${planet.id}/5: ${planet.name}`:'TIME LEFT';
+  ctx.fillText(`RESCUE IN: ${pname}`,cw/2,52);
 
   // Weapon panel
   const weapon=player.weapon;
@@ -815,33 +975,110 @@ function drawHUD(ctx,player,gameTime,cw,ch){
   ctx.restore();
 }
 
-function drawScoreScreen(ctx,cw,ch,gameTime,won){
+function drawLevelComplete(ctx,cw,ch,planet,levelIdx){
+  ctx.fillStyle='rgba(0,0,0,0.84)';ctx.fillRect(0,0,cw,ch);
+  const cx=cw/2,cy=ch/2,w=Math.min(500,cw-40),h=330;
+  ctx.strokeStyle='#44ff88';ctx.lineWidth=2;ctx.fillStyle='#040e06';
+  ctx.beginPath();ctx.roundRect(cx-w/2,cy-h/2,w,h,8);ctx.fill();ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 12px Courier New';ctx.fillStyle='#44ff8888';
+  ctx.fillText(`PLANET ${planet.id} / ${PLANETS.length} — ${planet.name.toUpperCase()}`,cx,cy-h/2+24);
+  ctx.font='bold 24px Courier New';ctx.fillStyle='#44ff88';
+  ctx.shadowBlur=16;ctx.shadowColor='#44ff88';
+  ctx.fillText('— RESCUE LANDER ARRIVED —',cx,cy-h/2+56);ctx.shadowBlur=0;
+  ctx.font='14px Courier New';ctx.fillStyle='#cccccc';
+  ctx.fillText(`You survived ${planet.name}. Orbital lander en route.`,cx,cy-h/2+92);
+  const next=PLANETS[levelIdx+1];
+  if(next){
+    ctx.fillStyle='#ffaa44';ctx.font='bold 15px Courier New';
+    ctx.fillText(`NEXT: Planet ${next.id} — ${next.name}`,cx,cy-h/2+136);
+    ctx.font='13px Courier New';ctx.fillStyle='#888888';
+    ctx.fillText(`"${next.subtitle}"`,cx,cy-h/2+158);
+    if(next.threats.length>0){
+      ctx.fillStyle='#ff6644';ctx.font='bold 12px Courier New';
+      ctx.fillText('WARNING: Threats detected —',cx,cy-h/2+190);
+      ctx.font='12px Courier New';ctx.fillStyle='#ff8866';
+      ctx.fillText(next.threats.join('  |  '),cx,cy-h/2+210);
+    }
+    if(next.hazardType==='lava') ctx.fillText('⚠ LAVA FIELDS present',cx,cy-h/2+228);
+    else if(next.hazardType==='toxic') ctx.fillText('☣ TOXIC POOLS present',cx,cy-h/2+228);
+    else if(next.hazardType==='ice') ctx.fillText('❄ ICE PATCHES present — movement slowed',cx,cy-h/2+228);
+  }
+  ctx.font='bold 15px Courier New';ctx.fillStyle='#ffffff';
+  ctx.shadowBlur=8;ctx.shadowColor='#ffffff';
+  ctx.fillText('[ PRESS R OR CLICK TO CONTINUE ]',cx,cy-h/2+295);ctx.shadowBlur=0;
+}
+
+function drawFinalVictory(ctx,cw,ch){
+  ctx.fillStyle='rgba(0,0,0,0.88)';ctx.fillRect(0,0,cw,ch);
+  const cx=cw/2,cy=ch/2,w=Math.min(520,cw-40),h=360;
+  ctx.strokeStyle='#ffe066';ctx.lineWidth=2;ctx.fillStyle='#060e04';
+  ctx.beginPath();ctx.roundRect(cx-w/2,cy-h/2,w,h,8);ctx.fill();ctx.stroke();
+  ctx.textAlign='center';
+  ctx.font='bold 11px Courier New';ctx.fillStyle='#ffe06688';
+  ctx.fillText('ALL 5 PLANETS SURVIVED',cx,cy-h/2+24);
+  ctx.font='bold 28px Courier New';ctx.fillStyle='#ffe066';
+  ctx.shadowBlur=20;ctx.shadowColor='#ffe066';
+  ctx.fillText('— MISSION ACCOMPLISHED —',cx,cy-h/2+58);ctx.shadowBlur=0;
+  ctx.font='15px Courier New';ctx.fillStyle='#44ff88';
+  ctx.fillText('You found EDEN — a paradise teeming with life.',cx,cy-h/2+100);
+  ctx.font='13px Courier New';ctx.fillStyle='#aaaaaa';
+  ctx.fillText('The search for friendly life is over.',cx,cy-h/2+126);
+  ctx.fillText('Your crew celebrated. The universe is not so lonely.',cx,cy-h/2+148);
+  ctx.font='bold 20px Courier New';ctx.fillStyle='#ffe066';
+  ctx.shadowBlur=12;ctx.shadowColor='#ffe066';
+  ctx.fillText('SCORE: 6000 / 6000',cx,cy-h/2+200);ctx.shadowBlur=0;
+  ctx.font='bold 38px Courier New';ctx.fillStyle='#ffe066';
+  ctx.shadowBlur=20;ctx.shadowColor='#ffe066';
+  ctx.fillText('RANK: S',cx,cy-h/2+258);ctx.shadowBlur=0;
+  ctx.font='13px Courier New';ctx.fillStyle='#ffffff66';
+  ctx.fillText('Press  R  to play again',cx,cy-h/2+310);
+}
+
+function drawScoreScreen(ctx,cw,ch,gameTime,won,planet,levelIdx){
   ctx.fillStyle='rgba(0,0,0,0.82)';ctx.fillRect(0,0,cw,ch);
   const cx=cw/2,cy=ch/2,w=Math.min(480,cw-40),h=290;
   ctx.strokeStyle=won?'#44ff88':'#ff3333';ctx.lineWidth=2;ctx.fillStyle='#08060f';
   ctx.beginPath();ctx.roundRect(cx-w/2,cy-h/2,w,h,8);ctx.fill();ctx.stroke();
-  ctx.textAlign='center';ctx.font='bold 28px Courier New';ctx.fillStyle=won?'#44ff88':'#ff3333';
-  ctx.fillText(won?'— MISSION COMPLETE —':'— YOU DIED —',cx,cy-h/2+50);
+  ctx.textAlign='center';ctx.font='bold 12px Courier New';ctx.fillStyle='#ff333388';
+  if(planet)ctx.fillText(`PLANET ${planet.id}/5 — ${planet.name}`,cx,cy-h/2+26);
+  ctx.font='bold 26px Courier New';ctx.fillStyle='#ff3333';
+  ctx.fillText('— YOU DIED —',cx,cy-h/2+54);
   const pct=Math.round((gameTime/MAX_GAME_TIME)*100),score=Math.round((gameTime/MAX_GAME_TIME)*6000);
   ctx.font='16px Courier New';ctx.fillStyle='#cccccc';
-  ctx.fillText(`Survived: ${formatTime(gameTime)}`,cx,cy-h/2+100);
-  ctx.fillText(`Completion: ${pct}%`,cx,cy-h/2+130);
-  ctx.font='bold 22px Courier New';ctx.fillStyle='#ffe066';ctx.fillText(`SCORE: ${score} / 6000`,cx,cy-h/2+175);
+  ctx.fillText(`Survived on planet: ${formatTime(gameTime)}`,cx,cy-h/2+100);
+  ctx.fillText(`Completion: ${pct}%`,cx,cy-h/2+128);
+  ctx.font='bold 20px Courier New';ctx.fillStyle='#ffe066';ctx.fillText(`SCORE: ${score} / 6000`,cx,cy-h/2+168);
   const grade=pct>=90?'S':pct>=70?'A':pct>=50?'B':pct>=30?'C':'D';
-  ctx.font='bold 36px Courier New';
+  ctx.font='bold 34px Courier New';
   ctx.fillStyle=grade==='S'?'#ffe066':grade==='A'?'#44ff88':grade==='B'?'#00eeff':grade==='C'?'#ff9900':'#ff4444';
-  ctx.fillText(`RANK: ${grade}`,cx,cy-h/2+232);
-  ctx.font='13px Courier New';ctx.fillStyle='#ffffff66';ctx.fillText('Press  R  to restart',cx,cy-h/2+270);
+  ctx.fillText(`RANK: ${grade}`,cx,cy-h/2+222);
+  ctx.font='13px Courier New';ctx.fillStyle='#ffffff66';ctx.fillText('Press  R  to retry this planet',cx,cy-h/2+265);
 }
 
 function drawStartScreen(ctx,cw,ch){
   ctx.fillStyle='rgba(0,0,0,0.88)';ctx.fillRect(0,0,cw,ch);
   const cx=cw/2,cy=ch/2;
   ctx.textAlign='center';ctx.font='bold 38px Courier New';ctx.fillStyle='#00eeff';ctx.shadowBlur=20;ctx.shadowColor='#00eeff';
-  ctx.fillText('ALIEN SURVIVOR',cx,cy-120);ctx.shadowBlur=0;
-  ctx.font='13px Courier New';
-  const lines=['You crash-landed on an uncharted alien world.','Survive 10 minutes against alien creatures.','','WASD / Arrows  →  Move','Mouse          →  Aim & Shoot','Q              →  Activate Shield (if collected)','','Collect supply pods to upgrade your weapons.','','CAVES  →  hide from Crawlers (others still hunt you)','LAVA   →  avoid — deals damage over time'];
-  lines.forEach((l,i)=>{ctx.fillStyle=l.includes('→')?'#ffe066':l.startsWith('CAVES')||l.startsWith('LAVA')?'#ff9944':'#aaaaaa';ctx.fillText(l,cx,cy-55+i*22);});
+  ctx.fillText('ALIEN SURVIVOR',cx,cy-140);ctx.shadowBlur=0;
+  ctx.font='13px Courier New';ctx.fillStyle='#888888';
+  ctx.fillText('5 planets  ·  escalating danger  ·  survive 10 min each',cx,cy-110);
+  const lines=[
+    'You are searching for friendly life across 5 alien planets.',
+    'Your landing craft is broken. Survive until the orbital lander rescues you.',
+    'Only the last planet is friendly. The rest want you dead.',
+    '',
+    'WASD / Arrows  →  Move',
+    'Mouse          →  Aim & Shoot',
+    'Q              →  Activate Shield (if collected)',
+    '',
+    'Collect supply pods to upgrade weapons.',
+    '',
+    'CAVES  →  hide from Crawlers (others still hunt you)',
+    'LAVA / TOXIC  →  avoid — damage over time',
+    'ICE   →  movement slowed',
+  ];
+  lines.forEach((l,i)=>{ctx.fillStyle=l.includes('→')?'#ffe066':l.startsWith('CAVES')||l.startsWith('LAVA')||l.startsWith('ICE')?'#ff9944':l.startsWith('You')||l.startsWith('Your')||l.startsWith('Only')?'#aaddff':'#aaaaaa';ctx.fillText(l,cx,cy-72+i*20);});
   ctx.font='bold 18px Courier New';ctx.fillStyle='#ffffff';ctx.shadowBlur=10;ctx.shadowColor='#ffffff';
   ctx.fillText('[ CLICK TO START ]',cx,cy+185);ctx.shadowBlur=0;
 }
@@ -924,43 +1161,67 @@ class Game {
     this.resize();window.addEventListener('resize',()=>this.resize());
     this.canvas.focus();
     this.input=new InputManager();
-    this.state='START';this.gameTime=0;this.worldTime=0;
+    this.state='START';this.currentLevel=0;this.planet=PLANETS[0];
+    this.gameTime=0;this.worldTime=0;this.introTimer=0;
+    this._buildWorld();this._resetGameplay();
 
-    this.stars=buildStars(450);
-    this.terrainZones=buildTerrainZones(22);
-    this.craters=buildCraters(55);
-    this.crystals=buildCrystals(80);
-    this.flora=buildAlienFlora(120);
-    this.caves=buildCaves(6);
-    this.lavaLakes=buildLavaLakes(10,this.caves);
-
-    this.reset();
-
-    const startGame = () => { if(this.state==='START') this.state='PLAYING'; };
-    this.canvas.addEventListener('click', startGame);
-    this.canvas.addEventListener('touchend', e => { e.preventDefault(); startGame(); }, { passive:false });
-    window.addEventListener('keydown', e => {
-      if(e.code==='KeyR'&&(this.state==='DEAD'||this.state==='WIN')){this.reset();this.state='PLAYING';}
+    const startGame=()=>{if(this.state==='START'){this.startLevel(0);}};
+    this.canvas.addEventListener('click',e=>{
+      if(this.state==='START'){startGame();}
+      else if(this.state==='LEVEL_COMPLETE'){this._advanceLevel();}
+      else if(this.state==='WIN'){this.startLevel(0);}
+      else if(this.state==='DEAD'){this.startLevel(this.currentLevel);}
     });
-    // Restart on tap in game-over screen
-    document.addEventListener('touchend', e => {
-      if(this.state==='DEAD'||this.state==='WIN'){e.preventDefault();this.reset();this.state='PLAYING';}
-    }, { passive:false });
-
+    this.canvas.addEventListener('touchend',e=>{
+      e.preventDefault();
+      if(this.state==='START'){startGame();}
+      else if(this.state==='LEVEL_COMPLETE'){this._advanceLevel();}
+      else if(this.state==='WIN'){this.startLevel(0);}
+      else if(this.state==='DEAD'){this.startLevel(this.currentLevel);}
+    },{passive:false});
+    window.addEventListener('keydown',e=>{
+      if(e.code==='KeyR'){
+        if(this.state==='DEAD')this.startLevel(this.currentLevel);
+        else if(this.state==='LEVEL_COMPLETE')this._advanceLevel();
+        else if(this.state==='WIN')this.startLevel(0);
+      }
+    });
     this.lastTime=performance.now();
     requestAnimationFrame(ts=>this.loop(ts));
   }
 
   resize(){this.canvas.width=window.innerWidth;this.canvas.height=window.innerHeight;}
 
-  reset(){
-    this.gameTime=0;
+  startLevel(idx){
+    this.currentLevel=idx;this.planet=PLANETS[idx];
+    this.gameTime=0;this.introTimer=3.5;
+    this._buildWorld();this._resetGameplay();
+    this.state='PLAYING';
+  }
+
+  _advanceLevel(){
+    if(this.currentLevel<PLANETS.length-1)this.startLevel(this.currentLevel+1);
+    else this.startLevel(0);
+  }
+
+  _buildWorld(){
+    const p=this.planet;
+    this.stars=buildStars(450,p.starColors);
+    this.terrainZones=buildTerrainZones(22,p.terrainHues);
+    this.craters=buildCraters(55);
+    this.crystals=buildCrystals(80,p.crystalHues);
+    this.flora=buildAlienFlora(120,p.floraHues);
+    this.caves=buildCaves(p.caveCount);
+    this.hazardPatches=p.hazardType!=='none'?buildLavaLakes(p.hazardCount,this.caves):[];
+  }
+
+  _resetGameplay(){
     const cx=WORLD_W/2,cy=WORLD_H/2;
     this.player=new Player(cx,cy);
     this.camera=new Camera(this.canvas.width,this.canvas.height);
     this.camera.x=cx;this.camera.y=cy;
     this.enemies=[];this.enemyBullets=[];this.particles=[];
-    this.spawner=new EnemySpawner();this.tools=[];
+    this.spawner=new EnemySpawner(this.planet);this.tools=[];
     const dist=[3,2,2,2,1];
     for(let i=0;i<20;i++){
       const pos=randomToolPosition(this.tools,cx,cy,300);
@@ -979,32 +1240,42 @@ class Game {
 
     if(this.state==='START'){this.drawBackground(ctx,cw,ch);drawStartScreen(ctx,cw,ch);}
     else if(this.state==='PLAYING'){this.update(dt);this.draw(ctx,cw,ch);}
-    else{this.draw(ctx,cw,ch);drawScoreScreen(ctx,cw,ch,this.gameTime,this.state==='WIN');}
+    else if(this.state==='LEVEL_COMPLETE'){this.draw(ctx,cw,ch);drawLevelComplete(ctx,cw,ch,this.planet,this.currentLevel);}
+    else if(this.state==='WIN'){this.draw(ctx,cw,ch);drawFinalVictory(ctx,cw,ch);}
+    else{this.draw(ctx,cw,ch);drawScoreScreen(ctx,cw,ch,this.gameTime,false,this.planet,this.currentLevel);}
 
     requestAnimationFrame(ts=>this.loop(ts));
   }
 
   update(dt){
     this.gameTime+=dt;
-    if(this.gameTime>=MAX_GAME_TIME){this.state='WIN';return;}
+    if(this.introTimer>0)this.introTimer-=dt;
+    if(this.gameTime>=MAX_GAME_TIME){
+      this.state=this.currentLevel===PLANETS.length-1?'WIN':'LEVEL_COMPLETE';return;
+    }
 
     this.player.update(dt,this.input,this.camera);
     if(this.player.dead){this.state='DEAD';return;}
 
-    // Cave detection
     this.player.inCave=this.caves.some(c=>pointInPolygon(c.x,c.y,c.points,this.player.x,this.player.y));
 
-    // Lava detection + damage
-    const prevInLava=this.player.inLava;
-    this.player.inLava=this.lavaLakes.some(l=>pointInEllipse(l.x,l.y,l.rx,l.ry,l.angle,this.player.x,this.player.y));
-    if(this.player.inLava){
-      this.player.lavaDamageTimer-=dt;
-      if(this.player.lavaDamageTimer<=0){
-        this.player.takeDamage(LAVA_DAMAGE*dt*10,this.particles);
-        this.player.invTimer=0; // lava bypasses normal invincibility
-        this.player.lavaDamageTimer=.1;
+    // Hazard detection
+    const ht=this.planet.hazardType;
+    const prevHazard=this.player.inLava||this.player.inIce;
+    this.player.inLava=false;this.player.inIce=false;
+    if(ht==='lava'||ht==='toxic'){
+      const inH=this.hazardPatches.some(l=>pointInEllipse(l.x,l.y,l.rx,l.ry,l.angle,this.player.x,this.player.y));
+      this.player.inLava=inH;
+      if(inH){
+        this.player.lavaDamageTimer-=dt;
+        if(this.player.lavaDamageTimer<=0){
+          this.player.takeDamage((ht==='toxic'?TOXIC_DAMAGE:LAVA_DAMAGE)*dt*10,this.particles);
+          this.player.invTimer=0;this.player.lavaDamageTimer=.1;
+        }
+        if(!prevHazard)spawnParticles(this.particles,this.player.x,this.player.y,ht==='toxic'?'#44ff44':'#ff6600',15,200,0.6,4);
       }
-      if(!prevInLava) spawnParticles(this.particles,this.player.x,this.player.y,'#ff6600',15,200,0.6,4);
+    } else if(ht==='ice'){
+      this.player.inIce=this.hazardPatches.some(l=>pointInEllipse(l.x,l.y,l.rx,l.ry,l.angle,this.player.x,this.player.y));
     }
 
     this.camera.follow(this.player,dt);
@@ -1040,12 +1311,10 @@ class Game {
   }
 
   drawBackground(ctx,cw,ch){
-    const cam=this.camera,time=this.worldTime;
+    const cam=this.camera,time=this.worldTime,p=this.planet;
 
-    // Base ground
-    ctx.fillStyle='#160b05';ctx.fillRect(0,0,cw,ch);
+    ctx.fillStyle=p.groundColor;ctx.fillRect(0,0,cw,ch);
 
-    // Ground pebbles / surface rock debris
     if(cam){
       for(const s of this.stars){
         if(!cam.isVisible(s.x,s.y,6))continue;
@@ -1056,9 +1325,8 @@ class Game {
         ctx.restore();
       }
       ctx.globalAlpha=1;
-    } else { ctx.globalAlpha=1;return; }
+    } else{ctx.globalAlpha=1;return;}
 
-    // Terrain zones (large soft ground color blobs)
     for(const z of this.terrainZones){
       if(!cam.isVisible(z.x,z.y,z.r+100))continue;
       const s=cam.worldToScreen(z.x,z.y);
@@ -1067,24 +1335,22 @@ class Game {
       ctx.fillStyle=grad;ctx.beginPath();ctx.arc(s.x,s.y,z.r,0,Math.PI*2);ctx.fill();
     }
 
-    // Lava lakes (drawn before caves, under terrain)
-    for(const l of this.lavaLakes)drawLavaLake(ctx,l,cam,time);
+    if(p.hazardType==='lava'){for(const l of this.hazardPatches)drawLavaLake(ctx,l,cam,time);}
+    else if(p.hazardType==='toxic'){for(const l of this.hazardPatches)drawToxicPool(ctx,l,cam,time);}
+    else if(p.hazardType==='ice'){for(const l of this.hazardPatches)drawIcePatch(ctx,l,cam,time);}
 
-    // Craters
     for(const c of this.craters){
       if(!cam.isVisible(c.x,c.y,c.rimR+20))continue;
       const s=cam.worldToScreen(c.x,c.y);
-      ctx.strokeStyle='#2e1005';ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR,0,Math.PI*2);ctx.stroke();
-      ctx.strokeStyle='#3e1a08';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR-2,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle=p.craterRim;ctx.lineWidth=4;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle=p.craterRim2;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s.x,s.y,c.rimR-2,0,Math.PI*2);ctx.stroke();
       const grad=ctx.createRadialGradient(s.x+c.r*.25,s.y+c.r*.2,0,s.x,s.y,c.r);
       grad.addColorStop(0,'#000000bb');grad.addColorStop(0.6,'#0a0612aa');grad.addColorStop(1,'#0c081800');
       ctx.fillStyle=grad;ctx.beginPath();ctx.arc(s.x,s.y,c.r,0,Math.PI*2);ctx.fill();
     }
 
-    // Caves (drawn as dark zones)
     for(const cave of this.caves)drawCave(ctx,cave,cam,time);
 
-    // Alien flora
     for(const f of this.flora){
       if(!cam.isVisible(f.x,f.y,f.r+10))continue;
       const s=cam.worldToScreen(f.x,f.y),sway=Math.sin(time*1.2+f.x*.008)*.08;
@@ -1099,7 +1365,6 @@ class Game {
       ctx.closePath();ctx.fill();ctx.stroke();ctx.shadowBlur=0;ctx.restore();
     }
 
-    // Crystals
     for(const c of this.crystals){
       if(!cam.isVisible(c.x,c.y,60))continue;
       const s=cam.worldToScreen(c.x,c.y);
@@ -1115,23 +1380,46 @@ class Game {
       ctx.fillStyle=c.color+'88';ctx.beginPath();ctx.arc(s.x,s.y,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
     }
 
-    // Grid dots
-    ctx.fillStyle='#1e0e06';const gridSize=100;
+    ctx.fillStyle=p.gridColor;const gridSize=100;
     const startX=Math.floor((cam.x-cw/2)/gridSize)*gridSize,startY=Math.floor((cam.y-ch/2)/gridSize)*gridSize;
     for(let gx=startX;gx<cam.x+cw/2+gridSize;gx+=gridSize)
       for(let gy=startY;gy<cam.y+ch/2+gridSize;gy+=gridSize){
         const gs=cam.worldToScreen(gx,gy);ctx.beginPath();ctx.arc(gs.x,gs.y,1.2,0,Math.PI*2);ctx.fill();
       }
 
-    // Vignette
     const vign=ctx.createRadialGradient(cw/2,ch/2,Math.min(cw,ch)*.2,cw/2,ch/2,Math.max(cw,ch)*.8);
-    vign.addColorStop(0,'rgba(0,0,0,0)');vign.addColorStop(1,'rgba(10,4,0,0.65)');
+    vign.addColorStop(0,'rgba(0,0,0,0)');vign.addColorStop(1,p.vignetteColor);
     ctx.fillStyle=vign;ctx.fillRect(0,0,cw,ch);
 
-    // Toxic sulfurous atmosphere haze
     const topHaze=ctx.createLinearGradient(0,0,0,ch*.3);
-    topHaze.addColorStop(0,'rgba(70,50,0,0.18)');topHaze.addColorStop(1,'rgba(70,50,0,0)');
+    topHaze.addColorStop(0,p.atmosphereTop);topHaze.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=topHaze;ctx.fillRect(0,0,cw,ch);
+  }
+
+  _drawIntro(ctx,cw,ch){
+    if(this.introTimer<=0)return;
+    const alpha=Math.min(1,this.introTimer*1.5)*Math.min(1,(this.introTimer)*.8);
+    const p=this.planet;
+    ctx.save();ctx.globalAlpha=alpha*0.92;
+    ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,0,cw,40);
+    ctx.fillRect(0,ch/2-70,cw,140);
+    ctx.globalAlpha=alpha;
+    ctx.textAlign='center';
+    ctx.font='bold 11px Courier New';ctx.fillStyle='#ffffff66';
+    ctx.fillText('LANDING SEQUENCE COMPLETE',cw/2,ch/2-50);
+    ctx.font='bold 30px Courier New';ctx.fillStyle=p.friendly?'#44ff88':'#ff6644';
+    ctx.shadowBlur=18;ctx.shadowColor=p.friendly?'#44ff88':'#ff4400';
+    ctx.fillText(`PLANET ${p.id}/5 — ${p.name}`,cw/2,ch/2-10);ctx.shadowBlur=0;
+    ctx.font='14px Courier New';ctx.fillStyle='#aaaaaa';
+    ctx.fillText(`"${p.subtitle}"`,cw/2,ch/2+20);
+    if(!p.friendly&&p.threats.length>0){
+      ctx.font='bold 12px Courier New';ctx.fillStyle='#ff6644';
+      ctx.fillText('WARNING: '+p.threats.join('  ·  '),cw/2,ch/2+50);
+    } else if(p.friendly){
+      ctx.font='bold 13px Courier New';ctx.fillStyle='#44ff88';
+      ctx.fillText('✦ FRIENDLY LIFEFORMS DETECTED ✦',cw/2,ch/2+50);
+    }
+    ctx.restore();
   }
 
   draw(ctx,cw,ch){
@@ -1144,8 +1432,9 @@ class Game {
     for(const b of this.player.bullets){if(cam.isVisible(b.x,b.y,10))b.draw(ctx,cam);}
     if(this.player.weapon instanceof Bomb)this.player.weapon.drawProjectiles(ctx,cam);
     for(const p of this.particles){if(cam.isVisible(p.x,p.y,20))p.draw(ctx,cam);}
-    drawHUD(ctx,this.player,this.gameTime,cw,ch);
+    drawHUD(ctx,this.player,this.gameTime,cw,ch,this.planet);
     drawTouchUI(ctx,this.input,cw,ch);
+    this._drawIntro(ctx,cw,ch);
   }
 }
 
